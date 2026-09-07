@@ -37,6 +37,8 @@ services:
       - "12345:12345"
     env_file:
       - ".env"
+    environment:
+      - SSL_CERT_FILE=/etc/ssl/certs/nscacert_combined.pem
     volumes:
       # Mount the bootstrap config
       - ./config.alloy:/etc/alloy/config.alloy:ro
@@ -45,6 +47,7 @@ services:
       # Mount Docker socket so remotely-managed pipelines can discover containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - pg_logs:/var/log/postgresql:ro 
+      - ./load-test/nscacert_combined.pem:/etc/ssl/certs/nscacert_combined.pem:ro
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
