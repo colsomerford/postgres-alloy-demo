@@ -1,0 +1,18 @@
+// config.alloy
+remotecfg {
+  url   = sys.env("GCLOUD_FM_URL")
+  id    = sys.env("COLLECTOR_ID") // Unique name or hostname for this container instance
+  attributes = {
+    "env"  = "production",
+    "type" = "docker-host",
+  }
+
+  basic_auth {
+    username = sys.env("GCLOUD_FM_HOSTED_ID")
+    password = sys.env("GCLOUD_RW_API_KEY")
+  }
+}
+
+livedebugging {
+  enabled = true
+}

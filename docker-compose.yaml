@@ -1,16 +1,82 @@
 services:
   db:
-    image: postgres:latest
+    image: postgres@sha256:d129b9577d274bb96cbd44d902bdeb1b935c89247d161241e9154cba64e13df4
     container_name: my-postgres
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-db-o11y} -d ${POSTGRES_DB:-mydatabase}"]
+      interval: 1s
+      timeout: 5s
+      retries: 10
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: mydatabase
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql
+      - pg_logs:/var/log/postgresql
+      - pgdata:/var/lib/postgresql/data
+      # Mount custom postgresql.conf into the container's config directory
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres-setup.sql:/docker-entrypoint-initdb.d/postgres-setup.sql:ro
+    # Tell Postgres to use your custom config file
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+      
   
+  alloy:
+    image: grafana/alloy@sha256:b8ec653c44235fbe910879145dac3597d66b0aaecf60bcbbe82580767771a839
+    platform: linux/arm64
+    container_name: alloy-fleet
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "12345:12345"
+    env_file:
+      - ".env"
+    volumes:
+      # Mount the bootstrap config
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      # Volume for local caching of remote configs & Write-Ahead Logs
+      - alloy-data:/var/lib/alloy/data
+      # Mount Docker socket so remotely-managed pipelines can discover containers
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - pg_logs:/var/log/postgresql:ro 
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+
+  python-tester:
+    build: 
+      context: ./load-test
+      dockerfile: Dockerfile
+    container_name: python_test_script
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://db-user:o11y_password@my-postgres:5432/mydatabase
+    depends_on:
+      db:
+        condition: service_healthy
+    # Watch rules for local file changes
+    develop:
+      watch:
+        # 1. Immediate sync & restart for script changes (fastest)
+        - path: ./load-test/postgres-test.py
+          action: sync+restart
+          target: /app/postgres-test.py
+
+        # 2. Full rebuild when project dependencies change
+        - path: ./load-test/pyproject.toml
+          action: rebuild
+
 volumes:
   pgdata:
+  alloy-data:
+  pg_logs:
