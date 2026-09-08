@@ -61,8 +61,8 @@ def generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, c
 
 
 if __name__ == "__main__":
-    SCHEMA = False
-    SLEEP_FOR = 1
+    SCHEMA = True
+    SLEEP_FOR = 0.5
     try:
         for DB_NAME in DB_NAMES:
             generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, 1000)
