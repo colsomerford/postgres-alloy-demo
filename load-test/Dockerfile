@@ -9,8 +9,10 @@ WORKDIR /app
 COPY nscacert_combined.pem /usr/local/share/ca-certificates/load-test/nscacert_combined.crt
 
 # Update system CA store
-RUN apt-get update && apt-get install -y ca-certificates && \
-    update-ca-certificates
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Optimize uv for container layer caching
 ENV UV_COMPILE_BYTECODE=1
