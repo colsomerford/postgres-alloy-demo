@@ -30,6 +30,7 @@ services:
     container_name: alloy-fleet
     user: root
     restart: unless-stopped
+    uts: host
     depends_on:
       db:
         condition: service_healthy
