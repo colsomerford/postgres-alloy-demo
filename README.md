@@ -12,7 +12,8 @@ docker exec -it my-postgres psql -U postgres -d mydatabase
 
 ## Setting up Postgres for Alloy
 
-To give the alloy the information it needs to connect to fleet management and write telemetry create a .env file in the root directory and create the following variables. The missing values should be filled in from your grafana cloud instance
+To give the alloy the information it needs to connect to fleet management and write telemetry create a .env file in the root directory and create the following variables. The missing values should be filled in from your grafana cloud instance.
+Please also change the COLLECTOR_ID to make it unique to your current setup.
 ```
 GCLOUD_HOSTED_METRICS_ID=
 GCLOUD_HOSTED_METRICS_URL=
