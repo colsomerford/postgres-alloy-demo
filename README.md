@@ -2,7 +2,7 @@
 
 To setup run the following command:
 ```
-docker compose -f docker-compose-alloy.yaml up -d
+docker compose up -d --build
 ```
 
 To access the SQL shell run the following:
@@ -10,65 +10,245 @@ To access the SQL shell run the following:
 docker exec -it my-postgres psql -U postgres -d mydatabase
 ```
 
-Example command to create a table:
-```
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO users (name, email) 
-VALUES 
-    ('Bob Jones', 'bob@example.com'),
-    ('Charlie Brown', 'charlie@example.com'),
-    ('Diana Prince', 'diana@example.com');
-
-SELECT * FROM users;
-```
-
 ## Setting up Postgres for Alloy
 
-To give the alloy the information it needs to connect to fleet management and write telemetry create a .env file in the root directory and create the following variables:
+To give the alloy the information it needs to connect to fleet management and write telemetry create a .env file in the root directory and create the following variables. The missing values should be filled in from your grafana cloud instance
 ```
-FM_URL=
-FM_USERNAME=
-GCLOUD_RW_API_KEY=
-DB_POSTGRES_DSN=postgresql://db-o11y:o11y_password@my-postgres:5432/mydatabase?sslmode=disable  
-GCLOUD_HOSTED_METRICS_URL=
 GCLOUD_HOSTED_METRICS_ID=
-GCLOUD_HOSTED_LOGS_URL=
+GCLOUD_HOSTED_METRICS_URL=
 GCLOUD_HOSTED_LOGS_ID=
-GCLOUD_HOSTED_OTLP_ENDPOINT=
-GCLOUD_HOSTED_OTLP_INSTANCE_ID=
+GCLOUD_HOSTED_LOGS_URL=
+GCLOUD_FM_URL=
+GCLOUD_FM_POLL_FREQUENCY=
+GCLOUD_FM_HOSTED_ID=
+GCLOUD_RW_API_KEY=
+DB_POSTGRES_DSN="postgresql://db-o11y:o11y_password@my-postgres:5432/mydatabase?sslmode=disable"
+DB_POSTGRES_DSN2="postgresql://db-o11y:o11y_password@my-postgres:5432/cje_test_1?sslmode=disable"
+DB_POSTGRES_DSN3="postgresql://db-o11y:o11y_password@my-postgres:5432/cje_test_2?sslmode=disable"
+COLLECTOR_ID="postgres_demo_collector"
 
 ```
 
-## Setting up Postgres for DB Observability
+## Setting up Fleet Management for Alloy
 
-In alloy/alloy-postgres.conf several required settings have been configured.
+Below is an example that may not be complete - note this version only sets up a single DSN for the Explain Plans
 
-Run the following commands:
 ```
-docker exec -i -e PGPASSWORD=password my-postgres psql -U postgres -d mydatabase -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
-docker exec -i -e PGPASSWORD=password my-postgres psql -U postgres -d mydatabase -c "CREATE USER \"db-o11y\" WITH PASSWORD 'o11y_password';GRANT pg_monitor TO \"db-o11y\";GRANT pg_read_all_stats TO \"db-o11y\";"
-docker exec -i -e PGPASSWORD=o11y_password my-postgres psql -U db-o11y -d mydatabase -c "SELECT * FROM pg_stat_statements LIMIT 1;"
-docker exec -i -e PGPASSWORD=password my-postgres psql -U postgres -d mydatabase -c "ALTER ROLE \"db-o11y\" SET pg_stat_statements.track = 'none';"
-docker exec -i -e PGPASSWORD=password my-postgres psql -U postgres -d mydatabase -c "GRANT pg_read_all_data TO \"db-o11y\";"
+prometheus.exporter.postgres "demo_cje_postgres_postgres_prometheus_exporter" {
+	data_source_names  = [sys.env("DB_POSTGRES_DSN")]
+	enabled_collectors = ["stat_statements"]
+
+	stat_statements {
+		exclude_users = ["db-o11y"]
+	}
+
+	autodiscovery {
+		enabled = true
+	}
+}
+
+database_observability.postgres "demo_cje_postgres_postgres_db_observability" {
+	data_source_name  = sys.env("DB_POSTGRES_DSN")
+	forward_to        = [loki.relabel.demo_cje_postgres_postgres_loki_relabel.receiver]
+	targets           = prometheus.exporter.postgres.demo_cje_postgres_postgres_prometheus_exporter.targets
+	enable_collectors = ["query_details", "query_samples", "schema_details", "explain_plans"]
+}
+
+loki.relabel "demo_cje_postgres_postgres_loki_relabel" {
+	forward_to = [loki.write.demo_cje_postgres_postgres_loki_write.receiver]
+
+	rule {
+		source_labels = ["instance"]
+		target_label  = "dsn"
+	}
+
+	rule {
+		target_label = "team"
+		replacement  = "dba"
+	}
+}
+
+discovery.relabel "demo_cje_postgres_postgres_discovery_relabel" {
+	targets = database_observability.postgres.demo_cje_postgres_postgres_db_observability.targets
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/db-o11y"
+	}
+
+	rule {
+		source_labels = ["instance"]
+		target_label  = "dsn"
+	}
+
+	rule {
+		target_label = "team"
+		replacement  = "dba"
+	}
+}
+
+prometheus.scrape "demo_cje_postgres_postgres_prometheus_scrape" {
+	targets    = discovery.relabel.demo_cje_postgres_postgres_discovery_relabel.output
+	forward_to = [prometheus.remote_write.demo_cje_postgres_postgres_prometheus_remote_write.receiver]
+}
+
+prometheus.remote_write "demo_cje_postgres_postgres_prometheus_remote_write" {
+	endpoint {
+		url = sys.env("GCLOUD_HOSTED_METRICS_URL")
+
+		basic_auth {
+			password = sys.env("GCLOUD_RW_API_KEY")
+			username = sys.env("GCLOUD_HOSTED_METRICS_ID")
+		}
+	}
+}
+
+loki.source.file "logs_integrations_postgres_exporter" {
+	targets = [{
+		__path__ = "/var/log/postgresql/postgresql-*.log",
+		job      = "postgres_logs",
+	}]
+
+	file_match {
+		enabled = true
+	}
+
+	forward_to = [database_observability.postgres.demo_cje_postgres_postgres_db_observability.logs_receiver]
+}
+
+loki.write "demo_cje_postgres_postgres_loki_write" {
+	endpoint {
+		url = sys.env("GCLOUD_HOSTED_LOGS_URL")
+
+		basic_auth {
+			password = sys.env("GCLOUD_RW_API_KEY")
+			username = sys.env("GCLOUD_HOSTED_LOGS_ID")
+		}
+	}
+}
 ```
 
-Go into DB o11y in Grafana and add a database via fleet management.
-The DSN environment variable is called DB_POSTGRES_DSN.
+The following is an Example of a pipeline with all targeted DSNs:
+
+```
+prometheus.exporter.postgres "demo_cje_postgres_postgres_prometheus_exporter" {
+	data_source_names  = [sys.env("DB_POSTGRES_DSN")]
+	enabled_collectors = ["stat_statements"]
+
+	stat_statements {
+		exclude_users = ["db-o11y"]
+	}
+
+	autodiscovery {
+		enabled = true
+	}
+}
+
+database_observability.postgres "demo_cje_postgres_postgres_db_observability_mydatabase" {
+	data_source_name  = sys.env("DB_POSTGRES_DSN")
+	forward_to        = [loki.relabel.demo_cje_postgres_postgres_loki_relabel.receiver]
+	targets           = prometheus.exporter.postgres.demo_cje_postgres_postgres_prometheus_exporter.targets
+	enable_collectors = ["query_details", "query_samples", "schema_details", "explain_plans"]
+}
+
+database_observability.postgres "demo_cje_postgres_postgres_db_observability_cje_test_1" {
+	data_source_name  = sys.env("DB_POSTGRES_DSN2")
+	forward_to        = [loki.relabel.demo_cje_postgres_postgres_loki_relabel.receiver]
+	targets           = prometheus.exporter.postgres.demo_cje_postgres_postgres_prometheus_exporter.targets
+	enable_collectors = ["query_details", "query_samples", "schema_details", "explain_plans"]
+}
+
+database_observability.postgres "demo_cje_postgres_postgres_db_observability_cje_test_2" {
+	data_source_name  = sys.env("DB_POSTGRES_DSN3")
+	forward_to        = [loki.relabel.demo_cje_postgres_postgres_loki_relabel.receiver]
+	targets           = prometheus.exporter.postgres.demo_cje_postgres_postgres_prometheus_exporter.targets
+	enable_collectors = ["query_details", "query_samples", "schema_details", "explain_plans"]
+}
+
+loki.relabel "demo_cje_postgres_postgres_loki_relabel" {
+	forward_to = [loki.write.demo_cje_postgres_postgres_loki_write.receiver]
+
+	rule {
+		source_labels = ["instance"]
+		target_label  = "dsn"
+	}
+
+	rule {
+		target_label = "team"
+		replacement  = "dba"
+	}
+}
+
+discovery.relabel "demo_cje_postgres_postgres_discovery_relabel" {
+	targets = database_observability.postgres.demo_cje_postgres_postgres_db_observability_mydatabase.targets
+
+	rule {
+		target_label = "job"
+		replacement  = "integrations/db-o11y"
+	}
+
+	rule {
+		source_labels = ["instance"]
+		target_label  = "dsn"
+	}
+
+	rule {
+		target_label = "team"
+		replacement  = "dba"
+	}
+}
+
+prometheus.scrape "demo_cje_postgres_postgres_prometheus_scrape" {
+	targets    = discovery.relabel.demo_cje_postgres_postgres_discovery_relabel.output
+	forward_to = [prometheus.remote_write.demo_cje_postgres_postgres_prometheus_remote_write.receiver]
+}
+
+prometheus.remote_write "demo_cje_postgres_postgres_prometheus_remote_write" {
+	endpoint {
+		url = sys.env("GCLOUD_HOSTED_METRICS_URL")
+
+		basic_auth {
+			password = sys.env("GCLOUD_RW_API_KEY")
+			username = sys.env("GCLOUD_HOSTED_METRICS_ID")
+		}
+	}
+}
+
+loki.source.file "logs_integrations_postgres_exporter" {
+	targets = [{
+		__path__ = "/var/log/postgresql/postgresql-*.log",
+		job      = "postgres_logs",
+	}]
+
+	file_match {
+		enabled = true
+	}
+
+	forward_to = [database_observability.postgres.demo_cje_postgres_postgres_db_observability_mydatabase.logs_receiver]
+}
+
+loki.write "demo_cje_postgres_postgres_loki_write" {
+	endpoint {
+		url = sys.env("GCLOUD_HOSTED_LOGS_URL")
+
+		basic_auth {
+			password = sys.env("GCLOUD_RW_API_KEY")
+			username = sys.env("GCLOUD_HOSTED_LOGS_ID")
+		}
+	}
+}
+```
 
 ## Troubleshooting and Stopping
 
 To get logs from the docker run the following:
 ```
-docker logs -f my-postgres
+docker compose logs alloy
+docker compose logs db
+docker compose logs python-tester
 ```
 
 To stop the setup and delete voluemes run the following:
 ```
-docker compose -f docker-compose-alloy.yaml down -v
+docker compose down --volumes
 ```

@@ -13,10 +13,9 @@ DB_NAMES = (os.getenv("DB_NAME", "mydatabase"), "cje_test_1", "cje_test_2")
 DB_USER = os.getenv("DB_USER", "db-user")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "o11y_password")
 DATABASE_URL = os.getenv("DATABASE_URL")
-SLEEP_FOR = 1
 
 
-def get_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD):
+def get_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, SQL):
     """Connects to PostgreSQL and selects all rows from the users table."""
     conn_info = (
         f"host={DB_HOST} port={DB_PORT} dbname={DB_NAME} "
@@ -29,21 +28,14 @@ def get_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD):
         name  = fake.name()
         email = fake.email()
         with psycopg.connect(conn_info) as conn:
-            return conn.execute("select * from schema1.users1 u join schema1.user_data1 d on u.id = d.user_id;").fetchall()
+            return conn.execute(SQL).fetchall()
             # query = "INSERT INTO Users(name, email) VALUES (%s, %s);"
             # conn.execute(query, (name, email))
         # return "success"
     except psycopg.Error as e:
-        try:
-            with psycopg.connect(conn_info) as conn:
-                return conn.execute("select * from schema2.users2 u join schema2.user_data2 d on u.id = d.user_id;").fetchall()
-        except psycopg.Error as e:
-            try:
-                with psycopg.connect(conn_info) as conn:
-                    return conn.execute("select * from schema3.users3 u join schema3.user_data3 d on u.id = d.user_id;").fetchall()
-            except psycopg.Error as e:
-                print(f"Database error: {e}")
-                return []
+        print(f"Database error: {e}")
+        return []
+
 
 def generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, count: int = 10_000):
     """Connects to PostgreSQL and selects all rows from the users table."""
@@ -69,6 +61,8 @@ def generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, c
 
 
 if __name__ == "__main__":
+    SCHEMA = False
+    SLEEP_FOR = 1
     try:
         for DB_NAME in DB_NAMES:
             generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, 1000)
@@ -77,7 +71,20 @@ if __name__ == "__main__":
     while True:
         for DB_NAME in DB_NAMES:
             print(f"Fetching users from database {DB_NAME}...")
-            users = get_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
+            match DB_NAME:
+                case "mydatabase":
+                    SQL = "select * from users1 u1 join user_data1 d1 on u1.id = d1.user_id;"
+                    if SCHEMA:
+                        SQL = "select * from schema1.users1 u1 join schema1.user_data1 d1 on u1.id = d1.user_id;"
+                case "cje_test_1":
+                    SQL = "select * from users2 u2 join user_data2 d2 on u2.id = d2.user_id;"
+                    if SCHEMA:
+                        SQL = "select * from schema2.users2 u2 join schema2.user_data2 d2 on u2.id = d2.user_id;"
+                case "cje_test_2":
+                    SQL = "select * from users3 u3 join user_data3 d3 on u3.id = d3.user_id;"
+                    if SCHEMA:
+                        SQL = "select * from schema3.users3 u3 join schema3.user_data3 d3 on u3.id = d3.user_id;"
+            users = get_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, SQL)
             for user in users:
                 print(user)
             time.sleep(SLEEP_FOR)
