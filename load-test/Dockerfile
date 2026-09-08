@@ -6,7 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 
 # Copy certificate into the system CA directory
-COPY nscacert_combined.pem /usr/local/share/ca-certificates/load-test/nscacert_combined.crt
+COPY nscacert_combined.pe[m] /usr/local/share/ca-certificates/load-test/nscacert_combined.crt
 
 # Update system CA store
 RUN apt-get update && \
