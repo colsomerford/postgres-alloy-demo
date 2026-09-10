@@ -11,7 +11,7 @@ GRANT pg_read_all_data TO "db-user";
 GRANT pg_write_all_data TO "db-user";
 
 -- Setup mydatabase
--- CREATE DATABASE mydatabase;
+CREATE DATABASE mydatabase;
 \connect mydatabase
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 CREATE SCHEMA schema1;
