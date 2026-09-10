@@ -64,7 +64,7 @@ def generate_and_insert_users(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, c
 
 if __name__ == "__main__":
     SCHEMA = True
-    SLEEP_FOR = 0.1
+    SLEEP_FOR = 5
     count = 0
     while True:
         if count % 10 == 0:
