@@ -1,2 +1,6 @@
 .env
 load-test/nscacert_combined.pem
+variables.tfvars
+.terraform*
+.venv
+terraform.*

@@ -99,6 +99,38 @@ VALUES
     (1, '2022-01-01'),
     (2, '2021-01-01'),
     (3, '2020-01-01');
+
+-- Setup cje_test_3
+CREATE DATABASE cje_test_3;
+\connect cje_test_3
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+CREATE SCHEMA schema4;
+ALTER ROLE "db-o11y" IN DATABASE cje_test_3 SET search_path TO schema4, public;
+
+CREATE TABLE schema4.users4 (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO schema4.users4 (name, email) 
+VALUES 
+    ('Bob Jones', 'bob@example.com'),
+    ('Charlie Brown', 'charlie@example.com'),
+    ('Diana Prince', 'diana@example.com');
+
+CREATE TABLE schema4.user_data4 (
+    user_id INT NOT NULL,
+    dob VARCHAR(100)
+);
+ALTER TABLE schema4.user_data4 ADD CONSTRAINT FK_User_Data_User_Id_Users_id FOREIGN KEY (user_id) REFERENCES schema4.users4 (id);
+INSERT INTO schema4.user_data4 (user_id, dob) 
+VALUES 
+    (1, '2022-01-01'),
+    (2, '2021-01-01'),
+    (3, '2020-01-01');
+
 ALTER ROLE "db-user" IN DATABASE mydatabase SET search_path TO schema1, public;
 ALTER ROLE "db-user" IN DATABASE cje_test_1 SET search_path TO schema2, public;
 ALTER ROLE "db-user" IN DATABASE cje_test_2 SET search_path TO schema3, public;
+ALTER ROLE "db-user" IN DATABASE cje_test_3 SET search_path TO schema4, public;
